@@ -20,11 +20,11 @@ def test_env():
 
     print("Training time: ", end - start)
 
-    if False:
+    if True:
         env.reset()
 
         action = [0, 1, 0, 0, 0, 0] # brake
-        for _ in range(100):
+        for _ in range(30):
             print(_)
             action = env.action_space.sample()
             image, reward, terminated, truncated, info = env.step(action)

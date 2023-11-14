@@ -73,10 +73,6 @@ class STKAgent:
     def _get_powerup(self):
         return self.playerKart.powerup.type
 
-    def _get_position(self) -> int:
-        overallDist = sorted([kart.overall_distance for kart in self.state.karts], reverse=True)
-        return overallDist.index(self.playerKart.overall_distance) + 1
-
     def _get_attachment(self):
         return self.playerKart.attachment.type
 
@@ -138,7 +134,6 @@ class STKAgent:
         info["jumping"] = self._get_jumping()
         info["powerup"] = self._get_powerup()
         info["velocity"] = self._get_velocity()
-        info["position"] = self._get_position()
         info["attachment"] = self._get_attachment()
         info["finish_time"] = self._get_finish_time()
         info["is_inside_track"] = self._get_is_inside_track()
@@ -271,7 +266,6 @@ class STKEnv(gym.Env):
 class STKReward(gym.Wrapper):
 
     FINISH = 1
-    POSITION = 0.5
     VELOCITY = 0.4
     COLLECT_POWERUP = 0.2
     USE_POWERUP = 0.2
@@ -327,11 +321,6 @@ class STKReward(gym.Wrapper):
 
         if info["done"]:
             reward += STKReward.FINISH
-
-        if info["position"] < self.prevInfo["position"]:
-            reward += STKReward.POSITION
-        elif info["position"] > self.prevInfo["position"]:
-            reward -= STKReward.POSITION
 
         # agent might purposely slow down and speed up again to get rewards, so add the or term
         if info["velocity"] > (self.prevInfo["velocity"] + 1) or info["velocity"] > 29:
