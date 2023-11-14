@@ -67,9 +67,6 @@ class STKAgent:
                 self.node_idx += 1
             path_dist = self.path_distance[self.node_idx]
 
-    def _get_jumping(self) -> bool:
-        return self.playerKart.jumping
-
     def _get_powerup(self):
         return self.playerKart.powerup.type
 
@@ -131,7 +128,6 @@ class STKAgent:
         info = {}
         info["done"] = self.done()
         info["nitro"] = self._check_nitro()
-        info["jumping"] = self._get_jumping()
         info["powerup"] = self._get_powerup()
         info["velocity"] = self._get_velocity()
         info["attachment"] = self._get_attachment()
@@ -159,7 +155,6 @@ class STKAgent:
         self.backward = 0
         self.no_movement = 0
         self.out_of_track_count = 0
-        self.total_jumps = 0
 
         self.started = True
         self._update_action([1, 0, 1, 0, 0, 0, 0])
@@ -275,7 +270,6 @@ class STKReward(gym.Wrapper):
     NO_MOVEMENT = -0.2
     OUT_OF_TRACK = -0.4
     BACKWARDS = -0.7
-    JUMP = -0.3
 
     def __init__(self, env: STKEnv):
         # TODO: handle rewards for attachments
@@ -294,9 +288,7 @@ class STKReward(gym.Wrapper):
         self.reward = 0
         self.backward = 0  # number of times the kart goes backwards
         self.prevInfo = None
-        self.total_jumps = 0 # number of times the kart jumps
         self.no_movement = 0 # number of times the kart doesn't move
-        self.jump_threshold = 20 # number of jumps allowed
         self.out_of_track_count = 0 
         self.backward_threshold = 50 #number of times the kart can go backwards
         self.no_movement_threshold = 5 # number of times the kart can stay still
@@ -352,18 +344,10 @@ class STKReward(gym.Wrapper):
         if info["powerup"].value and not self.prevInfo["powerup"].value:
             reward += STKReward.COLLECT_POWERUP
 
-        if info["jumping"] and not self.prevInfo["jumping"]:
-            reward += STKReward.JUMP
-            self.total_jumps += 1
-
         if self.backward >= self.backward_threshold:
             info["early_end"] = True
             info["early_end_reason"] = "Going backwards"
             self.backward = 0
-
-        if self.total_jumps > self.jump_threshold:
-            info["early_end"] = True
-            info["early_end_reason"] = "Jump threshold reached"
 
         if info.get("early_end", False):
             reward += STKReward.EARLY_END
