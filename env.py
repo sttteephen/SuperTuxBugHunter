@@ -2,7 +2,6 @@ import pystk
 import cv2
 import gymnasium as gym
 from gymnasium.spaces import Box, MultiDiscrete
-from torchvision import transforms as T
 import numpy as np
 from sympy import Point3D, Line3D
 import torch
@@ -37,19 +36,6 @@ class STKAgent:
             if player.controller == pystk.PlayerConfig.Controller.PLAYER_CONTROL:
                 self.AI = False
 
-    def _check_nitro(self) -> bool:
-        kartLoc = np.array(self.playerKart.location)
-        nitro = [pystk.Item.Type.NITRO_SMALL, pystk.Item.Type.NITRO_BIG]
-
-        for item in self.state.items:
-            if item.type in nitro:
-                itemLoc = np.array(item.location)
-                squared_dist = np.sum((kartLoc - itemLoc) ** 2, axis=0)
-                dist = np.sqrt(squared_dist)
-                if dist <= 1:
-                    return True
-        return False
-
     def _compute_lines(self, nodes):
         return [Line3D(*node) for node in nodes]
 
@@ -66,12 +52,6 @@ class STKAgent:
             elif dist_down_track > path_dist[1]:
                 self.node_idx += 1
             path_dist = self.path_distance[self.node_idx]
-
-    def _get_powerup(self):
-        return self.playerKart.powerup.type
-
-    def _get_attachment(self):
-        return self.playerKart.attachment.type
 
     def _get_finish_time(self) -> int:
         return int(self.playerKart.finish_time)
@@ -127,10 +107,7 @@ class STKAgent:
     def get_info(self) -> dict:
         info = {}
         info["done"] = self.done()
-        info["nitro"] = self._check_nitro()
-        info["powerup"] = self._get_powerup()
         info["velocity"] = self._get_velocity()
-        info["attachment"] = self._get_attachment()
         info["finish_time"] = self._get_finish_time()
         info["is_inside_track"] = self._get_is_inside_track()
         info["overall_distance"] = self._get_overall_distance()
@@ -262,19 +239,13 @@ class STKReward(gym.Wrapper):
 
     FINISH = 1
     VELOCITY = 0.4
-    COLLECT_POWERUP = 0.2
-    USE_POWERUP = 0.2
     DRIFT = 0.2
-    NITRO = 0.2
     EARLY_END = -1
     NO_MOVEMENT = -0.2
     OUT_OF_TRACK = -0.4
     BACKWARDS = -0.7
 
     def __init__(self, env: STKEnv):
-        # TODO: handle rewards for attachments
-        # TODO: rewards for using powerup - only if it hits other karts
-        # TODO: change value of USE_POWERUP when accounted for hitting other karts
         super(STKReward, self).__init__(env)
         self.observation_shape = self.env.observation_shape
         self.observation_space = Box(
@@ -282,8 +253,6 @@ class STKReward(gym.Wrapper):
             high=255,
             shape=self.observation_shape,
             dtype=np.uint8
-            #low=np.zeros(self.env.observation_shape),
-            #high=np.full(self.env.observation_shape, 255, dtype=np.float32),
         )
         self.reward = 0
         self.backward = 0  # number of times the kart goes backwards
@@ -304,12 +273,8 @@ class STKReward(gym.Wrapper):
         # {acceleration, brake, steer, fire, drift, nitro, rescue}
         # [2,            2,     3,     2,    2,     2,     2]   # action_space
         if action is not None:
-            if action[5] and info["nitro"]:
-                reward += STKReward.NITRO
             if action[4] and info["velocity"] > 10:
                 reward += STKReward.DRIFT
-            if action[3] and info["powerup"].value:
-                reward += STKReward.USE_POWERUP
 
         if info["done"]:
             reward += STKReward.FINISH
@@ -327,7 +292,6 @@ class STKReward(gym.Wrapper):
 
         delta_dist = info["overall_distance"] - self.prevInfo["overall_distance"]
         if delta_dist < 0:
-            #print('delta_dist')
             reward += STKReward.BACKWARDS
             self.backward += 1
         elif delta_dist == 0:
@@ -340,9 +304,6 @@ class STKReward(gym.Wrapper):
         if self.no_movement >= self.no_movement_threshold:
             reward += STKReward.NO_MOVEMENT
             self.no_movement = 0
-
-        if info["powerup"].value and not self.prevInfo["powerup"].value:
-            reward += STKReward.COLLECT_POWERUP
 
         if self.backward >= self.backward_threshold:
             info["early_end"] = True
@@ -357,10 +318,10 @@ class STKReward(gym.Wrapper):
 
     def step(self, action):
         state, reward, done, done, info = self.env.step(action)
-        #print('1', info)
+
         if len(info) > 1:
             reward = self._get_reward(action, info)
-            #print('2', info)
+
             if info.get("early_end", False):
                 done = True
                 #print(f'env_id: {self.env.env.id} - {info.get("early_end_reason", "None")}')
@@ -371,29 +332,19 @@ class STKReward(gym.Wrapper):
 class GrayScaleObservation(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
-        #self.observation_shape = self.env.observation_shape[:2]
         self.observation_space = Box(
             low=0,
             high=255,
             shape=(self.observation_shape[0], self.observation_shape[1], 1),
             dtype=np.uint8
-            #low=np.zeros(self.env.observation_shape),
-            #high=np.full(self.env.observation_shape, 255, dtype=np.float32),
         )
-        self.transform = T.Grayscale()
-
-    def permute_orientation(self, observation):
-        # permute [H, W, C] array to [C, H, W] tensor
-        observation = np.transpose(observation, (2, 0, 1))
-        return torch.from_numpy(observation)
 
     def observation(self, obs):
         obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         obs = np.expand_dims(obs, axis=2)
-        #plt.imshow(np.array(obs).astype(np.uint8), cmap='gray')
-        #plt.pause(0.1)
+        plt.imshow(np.array(obs).astype(np.uint8), cmap='gray')
+        plt.pause(0.1)
         return obs
-        #return self.transform(self.permute_orientation(obs)).squeeze(dim=0)
 
 
 class SkipFrame(gym.Wrapper):
@@ -407,8 +358,6 @@ class SkipFrame(gym.Wrapper):
             high=255,
             shape=self.observation_shape,
             dtype=np.uint8
-            #low=np.zeros(self.env.observation_shape),
-            #high=np.full(self.env.observation_shape, 255, dtype=np.float32),
         )
 
     def step(self, action):

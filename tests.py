@@ -14,7 +14,7 @@ def test_env():
 
     start = time.time()
     model = PPO('CnnPolicy', env, verbose=1, n_steps=64, tensorboard_log="./stk_tensorboard/")
-    model.learn(total_timesteps=10)
+    model.learn(total_timesteps=100000)
     model.save('ppo_stk' + str(int(time.time())))
     end = time.time()
 
