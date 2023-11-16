@@ -57,17 +57,28 @@ class STK:
         "none": pystk.GraphicsConfig.none,
     }
 
-    WIDTH = 300 # 600
-    HEIGHT = 200 # 400
+    WIDTH = 200 # 600
+    HEIGHT = 150 # 400
 
-    @staticmethod
-    def get_graphic_config(quality='hd'):
+    #@staticmethod
+    def get_graphic_config(quality='ld'):
         config = STK.GRAPHICS[quality]()
         config.screen_width = STK.WIDTH
         config.screen_height = STK.HEIGHT
+        config.animated_characters = False
+        config.bloom = False
+        config.dof = False
+        config.dynamic_lights = False
+        config.glow = False
+        config.motionblur - False
+        config.particles_effects = 0
+        config.high_definition_textures = 0
+        config.texture_compression = True
+        config.display_adapter = 0
+
         return config
 
-    @staticmethod
+    #@staticmethod
     def get_race_config(
         track=None,
         kart=None,
@@ -77,25 +88,19 @@ class STK:
         difficulty=1,
         vae=False,
     ):
-        if track is None:
-            track = choice(STK.TRACKS)
-        if kart is None:
-            kart = choice(STK.KARTS)
 
         config = pystk.RaceConfig()
-        config.difficulty = difficulty
+        config.difficulty = 1
         config.num_kart = 1 # numKarts
         config.reverse = False # np.random.choice([True, False])
         config.step_size = 0.045
         config.track = 'scotland' # track
-        config.laps = laps
+        config.laps = 1
         config.players[0].team = 0
         config.players[0].kart = 'tux' # kart
-        config.players[0].controller = (
-            pystk.PlayerConfig.Controller.AI_CONTROL
-            if vae
-            else pystk.PlayerConfig.Controller.PLAYER_CONTROL
-        )
+        config.players[0].controller = pystk.PlayerConfig.Controller.PLAYER_CONTROL
+
+
         return config
 
 
@@ -196,7 +201,7 @@ class Logger:
         self.vae_eval_step += 1
 
 
-def make_env(id: int, quality='hd', race_config_args={}):
+def make_env(id: int, quality='ld', race_config_args={}):
     """
     Utility function to create an env.
 
@@ -215,7 +220,6 @@ def make_env(id: int, quality='hd', race_config_args={}):
             GrayScaleObservation,
         )
 
-        # TODO: don't include stkreward for vae
         env = STKAgent(
             STK.get_graphic_config(quality),
             STK.get_race_config(**race_config_args),

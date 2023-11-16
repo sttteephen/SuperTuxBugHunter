@@ -4,8 +4,6 @@ import gymnasium as gym
 from gymnasium.spaces import Box, MultiDiscrete
 import numpy as np
 from sympy import Point3D, Line3D
-import torch
-from matplotlib import pyplot as plt
 
 class STKAgent:
     """
@@ -30,7 +28,7 @@ class STKAgent:
         self.track = pystk.Track()
         self.state = pystk.WorldState()
         self.currentAction = pystk.Action()
-        self.image = np.zeros(self.observation_shape, dtype=np.uint8) # np.float32
+        self.image = np.zeros(self.observation_shape, dtype=np.uint8)
         self.AI = True
         for player in raceConfig.players:
             if player.controller == pystk.PlayerConfig.Controller.PLAYER_CONTROL:
@@ -40,23 +38,22 @@ class STKAgent:
         return [Line3D(*node) for node in nodes]
 
     def _update_node_idx(self):
-        dist_down_track = (
-            0
-            if self.reverse and self.playerKart.overall_distance <= 0
-            else self.playerKart.distance_down_track
-        )
-        path_dist = self.path_distance[self.node_idx]
+        dist_down_track = self.playerKart.distance_down_track   # distance travelled on current lap
+        path_dist = self.path_distance[self.node_idx]   # distance of current node
+        
         while not (path_dist[0] <= dist_down_track <= path_dist[1]):
             if dist_down_track < path_dist[0]:
                 self.node_idx -= 1
             elif dist_down_track > path_dist[1]:
                 self.node_idx += 1
             path_dist = self.path_distance[self.node_idx]
+        #print(self.node_idx, path_dist, dist_down_track)
 
     def _get_finish_time(self) -> int:
         return int(self.playerKart.finish_time)
 
     def _get_overall_distance(self) -> int:
+        #print('overall distance', self.playerKart.overall_distance)
         return max(0, self.playerKart.overall_distance)
 
     def _get_kart_dist_from_center(self):
@@ -73,11 +70,15 @@ class STKAgent:
         self._update_node_idx()
         curr_path_width = self.path_width[self.node_idx][0]
         kart_dist = self._get_kart_dist_from_center()
+        #print('distance from center', kart_dist)
         return kart_dist <= curr_path_width / 2
 
     def _get_velocity(self):
         # returns the magnitude of velocity
         return np.sqrt(np.sum(np.array(self.playerKart.velocity) ** 2))
+    
+    def _get_game_time(self):
+        return self.state.time
 
     def _update_action(self, action: list):
         # {acceleration, brake, steer, fire, drift, nitro, rescue}
@@ -106,11 +107,13 @@ class STKAgent:
 
     def get_info(self) -> dict:
         info = {}
-        info["done"] = self.done()
-        info["velocity"] = self._get_velocity()
-        info["finish_time"] = self._get_finish_time()
-        info["is_inside_track"] = self._get_is_inside_track()
+        #info["done"] = self.done()
+        #info["velocity"] = self._get_velocity()
+        #info["finish_time"] = self._get_finish_time()
+        #info["is_inside_track"] = self._get_is_inside_track()
+        self._update_node_idx()
         info["overall_distance"] = self._get_overall_distance()
+        info["game_time"] = self._get_game_time()
         return info
 
     def done(self) -> bool:
@@ -122,33 +125,40 @@ class STKAgent:
 
     def reset(self):
         #print('resetting')
-        # changed this
         if self.started:
-            #return self.image, self.get_info()
             self.race.restart()
+
+            self._update_action([1, 0, 1, 0, 0, 0, 0])
+            for _ in range(10):
+                self.race.step(self.currentAction)
+                self.state.update()
+                self.track.update()
+                self.image = np.array(self.race.render_data[0].image, dtype=np.uint8)
+
         else:
             self.race.start()
+            
+            self._update_action([1, 0, 1, 0, 0, 0, 0])
+            for _ in range(10):
+                self.race.step(self.currentAction)
+                self.state.update()
+                self.track.update()
+                self.image = np.array(self.race.render_data[0].image, dtype=np.uint8)
 
-        self.backward = 0
-        self.no_movement = 0
-        self.out_of_track_count = 0
+            self.started = True
+            self.playerKart = self.state.players[0].kart
+            self.path_width = np.array(self.track.path_width) # an array containing the width of each path segment
+            self.path_distance = np.array(self.track.path_distance) # an array containing the distance of each path segment
+            # an array containing lines (3D start point, 3D end point) of each path segment
+            self.path_nodes = np.array(self._compute_lines(self.track.path_nodes))
 
-        self.started = True
-        self._update_action([1, 0, 1, 0, 0, 0, 0])
-        for _ in range(10):
-            self.race.step(self.currentAction)
-            self.state.update()
-            self.track.update()
-            self.image = np.array(self.race.render_data[0].image, dtype=np.uint8) #np.float32
+        
+        #print(self.playerKart.location)
+        #print(len(self.path_width))
+        #print(len(self.track.path_distance))
+        #print(self.track.path_nodes)
+        #print(self.path_nodes)
 
-        self.playerKart = self.state.players[0].kart
-        self.path_width = np.array(self.track.path_width)
-        self.path_distance = np.array(
-            sorted(self.track.path_distance[::-1], key=lambda x: x[0])
-            if self.reverse
-            else self.track.path_distance
-        )
-        self.path_nodes = np.array(self._compute_lines(self.track.path_nodes))
         self._update_node_idx()
         return self.image, self.get_info()
 
@@ -162,10 +172,16 @@ class STKAgent:
         info = self.get_info()
         self.state.update()
         self.track.update()
-        self.image = np.array(self.race.render_data[0].image, dtype=np.uint8) # np.float32
-        done = self.done()
+        self.image = np.array(self.race.render_data[0].image, dtype=np.uint8)
+        
+        #image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
+        #cv2.imshow('', image)
+        #cv2.waitKey(1)
 
-        return self.image, 0, done, done, info
+        terminated = self.done() or info["game_time"] > 10
+        truncated = terminated
+
+        return self.image, 0, terminated, truncated, info
 
     def close(self):
         self.race.stop()
@@ -237,13 +253,8 @@ class STKEnv(gym.Env):
 
 class STKReward(gym.Wrapper):
 
-    FINISH = 1
+    FINISH = 1000
     VELOCITY = 0.4
-    DRIFT = 0.2
-    EARLY_END = -1
-    NO_MOVEMENT = -0.2
-    OUT_OF_TRACK = -0.4
-    BACKWARDS = -0.7
 
     def __init__(self, env: STKEnv):
         super(STKReward, self).__init__(env)
@@ -255,83 +266,55 @@ class STKReward(gym.Wrapper):
             dtype=np.uint8
         )
         self.reward = 0
-        self.backward = 0  # number of times the kart goes backwards
         self.prevInfo = None
-        self.no_movement = 0 # number of times the kart doesn't move
-        self.out_of_track_count = 0 
-        self.backward_threshold = 50 #number of times the kart can go backwards
-        self.no_movement_threshold = 5 # number of times the kart can stay still
-        self.out_of_track_threshold = 50 # number of times the kart can go out of track
 
     def _get_reward(self, action, info):
 
-        reward = -0.02
+        reward = 0
         if self.prevInfo is None:
             self.prevInfo = info
 
-        #  0             1      2      3     4      5      6
-        # {acceleration, brake, steer, fire, drift, nitro, rescue}
-        # [2,            2,     3,     2,    2,     2,     2]   # action_space
-        if action is not None:
-            if action[4] and info["velocity"] > 10:
-                reward += STKReward.DRIFT
-
-        if info["done"]:
-            reward += STKReward.FINISH
-
-        # agent might purposely slow down and speed up again to get rewards, so add the or term
-        if info["velocity"] > (self.prevInfo["velocity"] + 1) or info["velocity"] > 29:
-            reward += STKReward.VELOCITY
-
-        if not info["is_inside_track"]:
-            reward += STKReward.OUT_OF_TRACK
-            self.out_of_track_count += 1
-            if self.out_of_track_count > self.out_of_track_threshold:
-                info["early_end"] = True
-                info["early_end_reason"] = "Outside track"
-
-        delta_dist = info["overall_distance"] - self.prevInfo["overall_distance"]
-        if delta_dist < 0:
-            reward += STKReward.BACKWARDS
-            self.backward += 1
-        elif delta_dist == 0:
-            self.no_movement += 1
-        elif delta_dist > 5:
-            reward += (delta_dist) / 10
+        # negative reward for going out of track
+        if self.env.env._get_kart_dist_from_center() > 15:
+            reward = -1
         else:
-            reward += max(0, delta_dist)
 
-        if self.no_movement >= self.no_movement_threshold:
-            reward += STKReward.NO_MOVEMENT
-            self.no_movement = 0
+            # reward for finishing race
+            #if info["done"]:
+                #reward += STKReward.FINISH
 
-        if self.backward >= self.backward_threshold:
-            info["early_end"] = True
-            info["early_end_reason"] = "Going backwards"
-            self.backward = 0
-
-        if info.get("early_end", False):
-            reward += STKReward.EARLY_END
+            # reward for moving in the right direction
+            delta_dist = info["overall_distance"] - self.prevInfo["overall_distance"]
+            if delta_dist <= 0:
+                reward = 0
+            else:
+                # maximum reward of 10 for moving in the right direction,
+                # otherwise reward is proportional to the distance moved
+                reward = min(10, delta_dist)
 
         self.prevInfo = info
-        return np.clip(reward, -5, 5)
+        #print(reward)
+        #print(reward, self.env.env._get_kart_dist_from_center())
+        return reward
 
     def step(self, action):
-        state, reward, done, done, info = self.env.step(action)
+        state, reward, terminated, truncated, info = self.env.step(action)
+
+        done = terminated or truncated
 
         if len(info) > 1:
             reward = self._get_reward(action, info)
+            
+            if done:
+                terminated = True
+                truncated = True
 
-            if info.get("early_end", False):
-                done = True
-                #print(f'env_id: {self.env.env.id} - {info.get("early_end_reason", "None")}')
-                info = {}
-        return state, reward, done, done, info
-
+        return state, reward, terminated, truncated, info
 
 class GrayScaleObservation(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
+        self.timestep = 0
         self.observation_space = Box(
             low=0,
             high=255,
@@ -342,8 +325,6 @@ class GrayScaleObservation(gym.ObservationWrapper):
     def observation(self, obs):
         obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         obs = np.expand_dims(obs, axis=2)
-        plt.imshow(np.array(obs).astype(np.uint8), cmap='gray')
-        plt.pause(0.1)
         return obs
 
 
@@ -365,8 +346,10 @@ class SkipFrame(gym.Wrapper):
         total_reward = 0.0
         for i in range(self._skip):
             # Accumulate reward and repeat the same action
-            obs, reward, done, done, info = self.env.step(action)
+            obs, reward, terminated, truncated, info = self.env.step(action)
             total_reward += reward
-            if done:
+            if terminated or truncated:
                 break
-        return obs, total_reward / self._skip, done, done, info
+
+        #print('reward', reward)
+        return obs, total_reward / self._skip, terminated, truncated, info
