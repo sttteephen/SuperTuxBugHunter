@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from stable_baselines3.common.evaluation import evaluate_policy
 
 def test_model():
-    model_str = 'ppo_stk_1626959979'
+    model_str = './stk_checkpoints/ppo_stk_2040000_steps'
     eval_env = SubprocVecEnv(
         [lambda: Monitor(make_env(id, quality='ld')()) for id in range(1)], start_method='spawn'
         )
@@ -31,10 +31,10 @@ def train_model():
     
     #env = make_env(0)()
 
-    checkpoint_callback = CheckpointCallback(save_freq=100000, save_path='./stk_checkpoints/', name_prefix='ppo_stk')
+    checkpoint_callback = CheckpointCallback(save_freq=8000, save_path='./stk_checkpoints/', name_prefix='ppo_stk')
     
-    model = PPO('CnnPolicy', env, n_steps=128, verbose=1, tensorboard_log="./stk_tensorboard/")
-    model.learn(total_timesteps=5000000, callback=checkpoint_callback)
+    model = PPO('CnnPolicy', env, n_steps=256, verbose=1, tensorboard_log="./stk_tensorboard/")
+    model.learn(total_timesteps=2000000, callback=checkpoint_callback)
     model.save('ppo_stk' + str(int(time.time())))
 
     if False:

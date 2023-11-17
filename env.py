@@ -47,13 +47,9 @@ class STKAgent:
             elif dist_down_track > path_dist[1]:
                 self.node_idx += 1
             path_dist = self.path_distance[self.node_idx]
-        #print(self.node_idx, path_dist, dist_down_track)
 
-    def _get_finish_time(self) -> int:
-        return int(self.playerKart.finish_time)
 
     def _get_overall_distance(self) -> int:
-        #print('overall distance', self.playerKart.overall_distance)
         return max(0, self.playerKart.overall_distance)
 
     def _get_kart_dist_from_center(self):
@@ -63,20 +59,6 @@ class STKAgent:
         path_node = self.path_nodes[self.node_idx]
         return path_node.distance(Point3D(location)).evalf()
 
-    def _get_is_inside_track(self):
-        # should i call this inside step?
-        # divide path_width by 2 because it's the width of the current path node
-        # and the dist of kart is from the center line
-        self._update_node_idx()
-        curr_path_width = self.path_width[self.node_idx][0]
-        kart_dist = self._get_kart_dist_from_center()
-        #print('distance from center', kart_dist)
-        return kart_dist <= curr_path_width / 2
-
-    def _get_velocity(self):
-        # returns the magnitude of velocity
-        return np.sqrt(np.sum(np.array(self.playerKart.velocity) ** 2))
-    
     def _get_game_time(self):
         return self.state.time
 
@@ -107,24 +89,12 @@ class STKAgent:
 
     def get_info(self) -> dict:
         info = {}
-        #info["done"] = self.done()
-        #info["velocity"] = self._get_velocity()
-        #info["finish_time"] = self._get_finish_time()
-        #info["is_inside_track"] = self._get_is_inside_track()
         self._update_node_idx()
         info["overall_distance"] = self._get_overall_distance()
         info["game_time"] = self._get_game_time()
         return info
 
-    def done(self) -> bool:
-        """
-        `playerKart.finish_time` > 0 when the kart finishes the race.
-        Initially the finish time is < 0.k
-        """
-        return self.playerKart.finish_time > 0
-
     def reset(self):
-        #print('resetting')
         if self.started:
             self.race.restart()
 
@@ -152,13 +122,6 @@ class STKAgent:
             # an array containing lines (3D start point, 3D end point) of each path segment
             self.path_nodes = np.array(self._compute_lines(self.track.path_nodes))
 
-        
-        #print(self.playerKart.location)
-        #print(len(self.path_width))
-        #print(len(self.track.path_distance))
-        #print(self.track.path_nodes)
-        #print(self.path_nodes)
-
         self._update_node_idx()
         return self.image, self.get_info()
 
@@ -178,7 +141,7 @@ class STKAgent:
         #cv2.imshow('', image)
         #cv2.waitKey(1)
 
-        terminated = self.done() or info["game_time"] > 10
+        terminated = info["game_time"] > 20
         truncated = terminated
 
         return self.image, 0, terminated, truncated, info
@@ -279,10 +242,6 @@ class STKReward(gym.Wrapper):
             reward = -1
         else:
 
-            # reward for finishing race
-            #if info["done"]:
-                #reward += STKReward.FINISH
-
             # reward for moving in the right direction
             delta_dist = info["overall_distance"] - self.prevInfo["overall_distance"]
             if delta_dist <= 0:
@@ -293,8 +252,6 @@ class STKReward(gym.Wrapper):
                 reward = min(10, delta_dist)
 
         self.prevInfo = info
-        #print(reward)
-        #print(reward, self.env.env._get_kart_dist_from_center())
         return reward
 
     def step(self, action):
@@ -351,5 +308,4 @@ class SkipFrame(gym.Wrapper):
             if terminated or truncated:
                 break
 
-        #print('reward', reward)
         return obs, total_reward / self._skip, terminated, truncated, info
