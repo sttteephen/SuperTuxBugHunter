@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from stable_baselines3.common.evaluation import evaluate_policy
 
 def test_model():
-    model_str = './stk_checkpoints/ppo_stk_2040000_steps'
+    model_str = './stk_checkpoints/ppo_stk_240000_steps.zip'
     eval_env = SubprocVecEnv(
         [lambda: Monitor(make_env(id, quality='ld')()) for id in range(1)], start_method='spawn'
         )
@@ -58,7 +58,7 @@ def train_model():
     print("src/env.py test successful")
 
 if __name__ == "__main__":
-    train_model()
-    #test_model()
+    #train_model()
+    test_model()
     #test_ppo()
     #test_vae_model()

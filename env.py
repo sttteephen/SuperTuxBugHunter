@@ -137,9 +137,9 @@ class STKAgent:
         self.track.update()
         self.image = np.array(self.race.render_data[0].image, dtype=np.uint8)
         
-        #image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
-        #cv2.imshow('', image)
-        #cv2.waitKey(1)
+        image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
+        cv2.imshow('', image)
+        cv2.waitKey(1)
 
         terminated = info["game_time"] > 20
         truncated = terminated
