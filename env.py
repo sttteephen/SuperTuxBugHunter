@@ -4,6 +4,9 @@ import gymnasium as gym
 from gymnasium.spaces import Box, MultiDiscrete
 import numpy as np
 from sympy import Point3D, Line3D
+import numpy as np
+import time
+import uuid
 
 class STKAgent:
     """
@@ -137,9 +140,9 @@ class STKAgent:
         self.track.update()
         self.image = np.array(self.race.render_data[0].image, dtype=np.uint8)
         
-        image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
-        cv2.imshow('', image)
-        cv2.waitKey(1)
+        #image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
+        #cv2.imshow('', image)
+        #cv2.waitKey(1)
 
         terminated = info["game_time"] > 20
         truncated = terminated
@@ -155,7 +158,7 @@ class STKAgent:
 class STKEnv(gym.Env):
     """
     A simple gym compatible STK environment for controlling the kart and interacting with the
-    environment. The goal is to place 1st among other karts.
+    environment.
 
     Observation:
         Image of shape `self.observation_shape`.
@@ -231,6 +234,20 @@ class STKReward(gym.Wrapper):
         self.reward = 0
         self.prevInfo = None
 
+        self.buffer_length = 50
+        self.fps_buffer = np.empty(shape=(self.buffer_length,), dtype=np.float32)
+        self.buffer_index = 0
+        self.fps_file = 'FPS_INFO_' + str(int(time.time())) + str(uuid.uuid4()) + ".txt"
+
+    def add_fps(self, fps):
+        self.fps_buffer[self.buffer_index] = fps
+        self.buffer_index += 1
+
+        if self.buffer_index == self.buffer_length:
+            with open(self.fps_file, "ab") as f:
+                np.savetxt(f, self.fps_buffer)
+            self.buffer_index = 0
+
     def _get_reward(self, action, info):
 
         reward = 0
@@ -255,8 +272,11 @@ class STKReward(gym.Wrapper):
         return reward
 
     def step(self, action):
+        start = time.time()
         state, reward, terminated, truncated, info = self.env.step(action)
-
+        end = time.time()
+        self.add_fps(end - start)
+        
         done = terminated or truncated
 
         if len(info) > 1:
@@ -309,3 +329,4 @@ class SkipFrame(gym.Wrapper):
                 break
 
         return obs, total_reward / self._skip, terminated, truncated, info
+
