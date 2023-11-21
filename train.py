@@ -14,19 +14,22 @@ from stable_baselines3.common.evaluation import evaluate_policy
 
 def train_model():
 
-    env_count = 25
+    env_count = 1
     env = SubprocVecEnv(
         [lambda: Monitor(make_env(id, quality='ld')()) for id in range(env_count)], start_method='spawn'
         )
+    
+    #env = DummyVecEnv([make_env(id, quality='ld')])
+    
     env = VecFrameStack(env, n_stack=4)
 
     save_freq = int(100000 / env_count)
     checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path='./stk_checkpoints/' + str(int(time.time())) + '/', name_prefix='ppo_stk')
     
-    # model = PPO('CnnPolicy', env, n_steps=256, verbose=1, tensorboard_log="./stk_tensorboard/")
+    model = PPO('CnnPolicy', env, n_steps=2048, verbose=1, tensorboard_log="./stk_tensorboard/")
 
-    model = PPO.load('./stk_checkpoints/ppo_stk_600000_stepsLastGoodOne.zip')
-    model.set_env(env)
+    #model = PPO.load('./stk_checkpoints/ppo_stk_500000_steps.zip')
+    #model.set_env(env)
 
     model.learn(total_timesteps=5000000, callback=checkpoint_callback)
     model.save('ppo_stk' + str(int(time.time())))
