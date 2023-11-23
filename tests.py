@@ -14,7 +14,7 @@ def test_model(model_str):
     
     #eval_env = DummyVecEnv([make_env(id, quality='ld')])
     eval_env = VecFrameStack(eval_env, n_stack=4)
-    model = PPO.load("./stk_checkpoints/" + model_str)
+    model = PPO.load(model_str)
     mean_rew, mean_std = evaluate_policy(model, eval_env, n_eval_episodes=3, render=True)
     print("Mean reward:", mean_rew, "Mean std:", mean_std)
 

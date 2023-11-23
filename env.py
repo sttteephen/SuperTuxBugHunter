@@ -7,6 +7,7 @@ from sympy import Point3D, Line3D
 import numpy as np
 import time
 import uuid
+import csv
 
 class STKAgent:
     """
@@ -141,9 +142,9 @@ class STKAgent:
         self.track.update()
         self.image = np.array(self.race.render_data[0].image, dtype=np.uint8)
         
-        image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
-        cv2.imshow('', image)
-        cv2.waitKey(1)
+        #image = cv2.cvtColor(self.race.render_data[0].image, cv2.COLOR_BGR2RGB) 
+        #cv2.imshow('', image)
+        #cv2.waitKey(1)
 
         terminated = info["game_time"] > 15
         truncated = terminated
@@ -196,6 +197,8 @@ class STKEnv(gym.Env):
         self.action_space = MultiDiscrete([2, 2, 3, 2, 2, 2])
 
     def step(self, action):
+        #print('envstep')
+
         if action is not None:
             assert self.action_space.contains(action), f'Invalid Action {action}'
         return self.env.step(action)
@@ -233,22 +236,7 @@ class STKReward(gym.Wrapper):
         self.reward = 0
         self.prevInfo = None
 
-        self.buffer_length = 50
-        self.fps_buffer = np.empty(shape=(self.buffer_length,), dtype=np.float32)
-        self.buffer_index = 0
-        self.fps_file = './reline_training_fps/RELINE_' + str(int(time.time())) + str(uuid.uuid4()) + ".txt"
-        self.drop_counter = 0
-
-    def add_fps(self, fps):
-        self.fps_buffer[self.buffer_index] = fps
-        self.buffer_index += 1
-
-        if self.buffer_index == self.buffer_length:
-            with open(self.fps_file, "ab") as f:
-                np.savetxt(f, self.fps_buffer)
-            self.buffer_index = 0
-
-    def _get_reward(self, action, info, fps):
+    def _get_reward(self, action, info):
 
         reward = 0
         if self.prevInfo is None:
@@ -268,25 +256,16 @@ class STKReward(gym.Wrapper):
                 # otherwise reward is proportional to the distance moved
                 reward = min(10, delta_dist)
 
-            if fps > 0.00148574816:
-                self.drop_counter += 1
-                print('FPS DROP', self.drop_counter)
-                #reward +=10
-
         self.prevInfo = info
         return reward
 
     def step(self, action):
-        start = time.time()
-        state, reward, terminated, truncated, info = self.env.step(action)
-        end = time.time()
-        fps = end - start
-        self.add_fps(fps)
 
+        state, reward, terminated, truncated, info = self.env.step(action)
         done = terminated or truncated
 
         if len(info) > 1:
-            reward = self._get_reward(action, info, fps)
+            reward = self._get_reward(action, info)
             
             if done:
                 terminated = True
@@ -324,15 +303,41 @@ class SkipFrame(gym.Wrapper):
             dtype=np.uint8
         )
 
+        self.fps_buffer = []
+        self.fps_file = './same_action_fps' + str(uuid.uuid4()) + ".csv"
+        self.drop_counter = 0
+
+    def add_fps(self, fps, done):
+        self.fps_buffer.append(1 / fps)
+
+        if done:
+            with open(self.fps_file, 'a', newline='\n') as f:
+                wr = csv.writer(f)
+                wr.writerow(self.fps_buffer)
+                self.fps_buffer = []
+
     def step(self, action):
         """Repeat action, and sum reward"""
+
+        start = time.time()
+        
         total_reward = 0.0
         for i in range(self._skip):
             # Accumulate reward and repeat the same action
             obs, reward, terminated, truncated, info = self.env.step(action)
+            
             total_reward += reward
             if terminated or truncated:
                 break
+        
+        end = time.time()
+
+        fps = end - start
+        self.add_fps(fps, terminated or truncated)
+
+        #if fps > 0.00148574816:
+            #    self.drop_counter += 1
+            #    print('FPS DROP', self.drop_counter)
+                #reward +=10
 
         return obs, total_reward / self._skip, terminated, truncated, info
-

@@ -99,7 +99,7 @@ class STK:
         config.players[0].team = 0
         config.players[0].kart = 'tux' # kart
         config.players[0].controller = pystk.PlayerConfig.Controller.PLAYER_CONTROL
-
+        config.seed = 1
 
         return config
 
